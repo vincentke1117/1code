@@ -306,15 +306,17 @@ export const AgentTodoTool = memo(function AgentTodoTool({
     const change = changes.items[0]
     const IconComponent = getStatusIconComponent(change.newStatus)
 
+    // For in_progress status with activeForm, use activeForm as the title text
+    // to avoid duplication (content + activeForm both shown)
+    const titleText =
+      change.newStatus === "in_progress" && change.todo.activeForm
+        ? change.todo.activeForm
+        : change.todo.content
+
     return (
       <AgentToolCall
         icon={IconComponent}
-        title={getStatusVerb(change.newStatus, change.todo.content)}
-        subtitle={
-          change.todo.activeForm && change.newStatus === "in_progress"
-            ? change.todo.activeForm
-            : undefined
-        }
+        title={getStatusVerb(change.newStatus, titleText)}
         isPending={isPending}
         isError={false}
       />

@@ -453,7 +453,7 @@ export function SubChatSelector({
               <IconOpenSidebarRight className="h-4 w-4 scale-x-[-1]" />
             </Button>
           </TooltipTrigger>
-          <TooltipContent side="bottom">Open agents pane</TooltipContent>
+          <TooltipContent side="bottom">Open chats pane</TooltipContent>
         </Tooltip>
       )}
 
@@ -667,7 +667,7 @@ export function SubChatSelector({
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent side="bottom">
-                  New agent
+                  New chat
                   <Kbd>{getShortcutKey("newTab")}</Kbd>
                 </TooltipContent>
               </Tooltip>
@@ -690,7 +690,7 @@ export function SubChatSelector({
             onOpenChange={setIsHistoryOpen}
             items={sortedSubChats}
             onSelect={handleSelectFromHistory}
-            placeholder="Search agents..."
+            placeholder="Search chats..."
             emptyMessage="No results"
             getItemValue={(subChat) =>
               `${subChat.name || "New Agent"} ${subChat.id}`
@@ -744,7 +744,7 @@ export function SubChatSelector({
                   </PopoverTrigger>
                 </TooltipTrigger>
                 <TooltipContent side="bottom">
-                  Search agents
+                  Search chats
                   <Kbd>/</Kbd>
                 </TooltipContent>
               </Tooltip>

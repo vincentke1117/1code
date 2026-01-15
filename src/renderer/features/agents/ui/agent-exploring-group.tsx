@@ -133,6 +133,7 @@ export const AgentExploringGroup = memo(function AgentExploringGroup({
                   icon={meta.icon}
                   title={meta.title(part)}
                   subtitle={meta.subtitle?.(part)}
+                  tooltipContent={meta.tooltipContent?.(part)}
                   isPending={isPending}
                   isError={isError}
                 />

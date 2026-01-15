@@ -48,6 +48,7 @@ import { SubChatContextMenu } from "./sub-chat-context-menu"
 import { formatTimeAgo } from "../../lib/utils/format-time-ago"
 import { pluralize } from "../../lib/utils/pluralize"
 import { RenameDialog } from "../../components/rename-dialog"
+import { useSubChatDraftsCache, getSubChatDraftKey } from "../agents/lib/drafts"
 
 interface SubChatsSidebarProps {
   onClose?: () => void
@@ -512,7 +513,7 @@ export function SubChatsSidebar({
         onOpenChange={setIsHistoryOpen}
         items={sortedSubChats}
         onSelect={handleSelectFromHistory}
-        placeholder="Search agents..."
+        placeholder="Search chats..."
         emptyMessage="No results"
         getItemValue={(subChat) =>
           `${subChat.name || "New Agent"} ${subChat.id}`
@@ -563,9 +564,22 @@ export function SubChatsSidebar({
             <IconDoubleChevronLeft className="h-4 w-4" />
           </Button>
         </TooltipTrigger>
-        <TooltipContent side="bottom">Close agents pane</TooltipContent>
+        <TooltipContent side="bottom">Close chats pane</TooltipContent>
       </Tooltip>
     </div>
+  )
+
+  // Drafts cache - uses event-based sync instead of polling
+  const draftsCache = useSubChatDraftsCache()
+
+  // Get draft for a sub-chat
+  const getDraftText = useCallback(
+    (subChatId: string): string | null => {
+      if (!parentChatId) return null
+      const key = getSubChatDraftKey(parentChatId, subChatId)
+      return draftsCache[key] || null
+    },
+    [parentChatId, draftsCache],
   )
 
   // Render a single sub-chat item
@@ -578,6 +592,7 @@ export function SubChatsSidebar({
     const timeAgo = formatTimeAgo(subChat.updated_at || subChat.created_at)
     const mode = subChat.mode || "agent"
     const isChecked = selectedSubChatIds.has(subChat.id)
+    const draftText = getDraftText(subChat.id)
 
     return (
       <ContextMenu key={subChat.id}>
@@ -678,10 +693,14 @@ export function SubChatsSidebar({
                     </button>
                   )}
                 </div>
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-[11px] text-muted-foreground/60 flex-shrink-0">
-                    {timeAgo}
-                  </span>
+                <div className="flex items-center gap-2 min-w-0 text-[11px] text-muted-foreground/60">
+                  {draftText ? (
+                    <span className="truncate">
+                      <span className="text-blue-500">Draft:</span> {draftText}
+                    </span>
+                  ) : (
+                    <span className="flex-shrink-0">{timeAgo}</span>
+                  )}
                 </div>
               </div>
             </div>
@@ -759,7 +778,7 @@ export function SubChatsSidebar({
                       <AlignJustify className="h-4 w-4" />
                     </Button>
                   </TooltipTrigger>
-                  <TooltipContent>Open agents sidebar</TooltipContent>
+                  <TooltipContent>Open chats sidebar</TooltipContent>
                 </Tooltip>
               )}
               <div className="flex-1" />
@@ -770,7 +789,7 @@ export function SubChatsSidebar({
           <div className="relative">
             <Input
               ref={searchInputRef}
-              placeholder="Search agents..."
+              placeholder="Search chats..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               onKeyDown={(e) => {
@@ -824,11 +843,11 @@ export function SubChatsSidebar({
                 size="sm"
                 className="h-7 px-2 w-full hover:bg-foreground/10 transition-[background-color,transform] duration-150 ease-out active:scale-[0.97] text-foreground rounded-lg"
               >
-                <span className="text-sm font-medium">New Agent</span>
+                <span className="text-sm font-medium">New Chat</span>
               </Button>
             </TooltipTrigger>
             <TooltipContent side="right">
-              Create a new agent
+              Create a new chat
               <Kbd>{getShortcutKey("newTab")}</Kbd>
             </TooltipContent>
           </Tooltip>
@@ -899,7 +918,7 @@ export function SubChatsSidebar({
                         )}
                       >
                         <h3 className="text-xs font-medium text-muted-foreground whitespace-nowrap">
-                          {pinnedChats.length > 0 ? "Recent" : "Agents"}
+                          {pinnedChats.length > 0 ? "Recent" : "Chats"}
                         </h3>
                       </div>
                       <div className="list-none p-0 m-0">
@@ -976,8 +995,8 @@ export function SubChatsSidebar({
         onSave={handleRenameSave}
         currentName={renamingSubChat?.name || ""}
         isLoading={renameLoading}
-        title="Rename agent"
-        placeholder="Agent name"
+        title="Rename chat"
+        placeholder="Chat name"
       />
 
       {/* SubChat name tooltip portal */}

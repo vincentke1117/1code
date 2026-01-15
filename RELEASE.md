@@ -24,13 +24,13 @@ cd apps/desktop
 npm version patch --no-git-tag-version  # 0.0.5 → 0.0.6
 ```
 
-### 2. Update Download Links
+### 2. Commit Version Bump
 
-Update version in these files:
-- `apps/web/app/agents/landing-page.tsx`
-- `apps/web/app/agents/download/download-landing.tsx`
-
-Replace old version URLs with new version (e.g., `Agents-0.0.5` → `Agents-0.0.6`).
+```bash
+git add apps/desktop/package.json
+git commit -m "chore(desktop): bump version to 0.0.X"
+git push
+```
 
 ### 3. Run Release Script
 
@@ -62,19 +62,19 @@ Once both DMGs show `status: Accepted`, staple and re-upload:
 cd apps/desktop/release
 
 # Staple notarization tickets
-xcrun stapler staple Agents-0.0.X-arm64.dmg
-xcrun stapler staple Agents-0.0.X.dmg
+xcrun stapler staple 1Code-0.0.X-arm64.dmg
+xcrun stapler staple 1Code-0.0.X.dmg
 
 # Re-upload stapled DMGs to R2
-npx wrangler r2 object put "components-code/releases/desktop/Agents-0.0.X-arm64.dmg" \
-  --file="Agents-0.0.X-arm64.dmg" --content-type="application/x-apple-diskimage"
-npx wrangler r2 object put "components-code/releases/desktop/Agents-0.0.X.dmg" \
-  --file="Agents-0.0.X.dmg" --content-type="application/x-apple-diskimage"
+npx wrangler r2 object put "components-code/releases/desktop/1Code-0.0.X-arm64.dmg" \
+  --file="1Code-0.0.X-arm64.dmg" --content-type="application/x-apple-diskimage"
+npx wrangler r2 object put "components-code/releases/desktop/1Code-0.0.X.dmg" \
+  --file="1Code-0.0.X.dmg" --content-type="application/x-apple-diskimage"
 
 # Update GitHub release assets
-gh release delete-asset v0.0.X Agents-0.0.X-arm64.dmg --yes
-gh release delete-asset v0.0.X Agents-0.0.X.dmg --yes
-gh release upload v0.0.X Agents-0.0.X-arm64.dmg Agents-0.0.X.dmg --clobber
+gh release delete-asset v0.0.X 1Code-0.0.X-arm64.dmg --yes
+gh release delete-asset v0.0.X 1Code-0.0.X.dmg --yes
+gh release upload v0.0.X 1Code-0.0.X-arm64.dmg 1Code-0.0.X.dmg --clobber
 ```
 
 ### 5. Publish Release & Update Changelog
@@ -108,7 +108,29 @@ gh release edit v0.0.X --draft=false --latest
 gh release edit v0.0.X --notes "..."
 ```
 
-### 6. Commit & Tag
+### 6. Sync to Public Repository
+
+**Important:** After releasing, sync to the open-source repo:
+
+```bash
+cd apps/desktop
+./scripts/sync-to-public.sh
+```
+
+This script:
+1. Syncs code from private repo to public `21st-dev/1code` repo
+2. Creates a matching GitHub release in the public repo
+3. Uses release notes from the private repo
+
+### 7. Update Download Links
+
+Update version in `apps/web/lib/desktop.ts`:
+
+```typescript
+export const DESKTOP_VERSION = "0.0.X"
+```
+
+### 8. Commit & Tag
 
 ```bash
 git add -A
@@ -129,10 +151,10 @@ git push origin v0.0.X
 
 | File | Purpose |
 |------|---------|
-| `Agents-X.X.X-arm64.dmg` | ARM64 installer (Apple Silicon) |
-| `Agents-X.X.X.dmg` | x64 installer (Intel) |
-| `Agents-X.X.X-arm64-mac.zip` | ARM64 auto-update package |
-| `Agents-X.X.X-mac.zip` | x64 auto-update package |
+| `1Code-X.X.X-arm64.dmg` | ARM64 installer (Apple Silicon) |
+| `1Code-X.X.X.dmg` | x64 installer (Intel) |
+| `1Code-X.X.X-arm64-mac.zip` | ARM64 auto-update package |
+| `1Code-X.X.X-mac.zip` | x64 auto-update package |
 | `latest-mac.yml` | ARM64 update manifest |
 | `latest-mac-x64.yml` | x64 update manifest |
 | `*.blockmap` | Delta update blockmaps |
@@ -140,12 +162,13 @@ git push origin v0.0.X
 ### CDN URLs
 
 - Manifests: `https://cdn.21st.dev/releases/desktop/latest-mac.yml`
-- DMGs: `https://cdn.21st.dev/releases/desktop/Agents-X.X.X-arm64.dmg`
-- ZIPs: `https://cdn.21st.dev/releases/desktop/Agents-X.X.X-arm64-mac.zip`
+- DMGs: `https://cdn.21st.dev/releases/desktop/1Code-X.X.X-arm64.dmg`
+- ZIPs: `https://cdn.21st.dev/releases/desktop/1Code-X.X.X-arm64-mac.zip`
 
-### GitHub Release
+### GitHub Releases
 
-- URL: `https://github.com/21st-dev/21st/releases/tag/vX.X.X`
+- Private: `https://github.com/21st-dev/21st/releases/tag/vX.X.X`
+- Public: `https://github.com/21st-dev/1code/releases/tag/vX.X.X`
 
 ## How Auto-Updates Work
 

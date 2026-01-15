@@ -158,18 +158,49 @@ export class IPCChatTransport implements ChatTransport<UIMessage> {
               chunkCount++
               lastChunkType = chunk.type
 
+              // Debug: log all chunks when there's a pending question
+              const currentPending = appStore.get(pendingUserQuestionsAtom)
+              if (currentPending || chunk.type === "ask-user-question") {
+                console.log("[PendingQ] Transport chunk:", {
+                  type: chunk.type,
+                  hasPending: !!currentPending,
+                  chunkCount,
+                })
+              }
+
               // Handle AskUserQuestion - show question UI
               if (chunk.type === "ask-user-question") {
+                console.log("[PendingQ] Transport: Setting pending question", {
+                  subChatId: this.config.subChatId,
+                  toolUseId: chunk.toolUseId,
+                })
                 appStore.set(pendingUserQuestionsAtom, {
+                  subChatId: this.config.subChatId,
                   toolUseId: chunk.toolUseId,
                   questions: chunk.questions,
                 })
               }
 
-              // Clear pending questions on ANY other chunk type (agent moved on)
-              if (chunk.type !== "ask-user-question") {
+              // Handle AskUserQuestion timeout - clear pending question immediately
+              if (chunk.type === "ask-user-question-timeout") {
                 const pending = appStore.get(pendingUserQuestionsAtom)
-                if (pending) {
+                if (pending && pending.toolUseId === chunk.toolUseId) {
+                  console.log("[PendingQ] Transport: Clearing timed out question", {
+                    toolUseId: chunk.toolUseId,
+                  })
+                  appStore.set(pendingUserQuestionsAtom, null)
+                }
+              }
+
+              // Clear pending questions on ANY other chunk type (agent moved on)
+              // Only clear if the pending question belongs to THIS sub-chat
+              if (chunk.type !== "ask-user-question" && chunk.type !== "ask-user-question-timeout") {
+                const pending = appStore.get(pendingUserQuestionsAtom)
+                if (pending && pending.subChatId === this.config.subChatId) {
+                  console.log("[PendingQ] Transport: Clearing pending question", {
+                    chunkType: chunk.type,
+                    pendingToolUseId: pending.toolUseId,
+                  })
                   appStore.set(pendingUserQuestionsAtom, null)
                 }
               }
@@ -272,6 +303,15 @@ export class IPCChatTransport implements ChatTransport<UIMessage> {
             },
             onComplete: () => {
               console.log(`[SD] R:COMPLETE sub=${subId} n=${chunkCount} last=${lastChunkType}`)
+              // Fallback: clear any pending questions when stream completes
+              // This handles edge cases where timeout chunk wasn't received
+              const pending = appStore.get(pendingUserQuestionsAtom)
+              if (pending && pending.subChatId === this.config.subChatId) {
+                console.log("[PendingQ] Transport: Clearing pending question on stream complete (fallback)", {
+                  pendingToolUseId: pending.toolUseId,
+                })
+                appStore.set(pendingUserQuestionsAtom, null)
+              }
               try {
                 controller.close()
               } catch {

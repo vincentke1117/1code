@@ -352,6 +352,12 @@ export const claudeRouter = router({
                     }>((resolve) => {
                       const timeoutId = setTimeout(() => {
                         pendingToolApprovals.delete(toolUseID)
+                        // Emit chunk to notify UI that the question has timed out
+                        // This ensures the pending question dialog is cleared
+                        safeEmit({
+                          type: "ask-user-question-timeout",
+                          toolUseId: toolUseID,
+                        } as UIMessageChunk)
                         resolve({ approved: false, message: "Timed out" })
                       }, 60000)
 

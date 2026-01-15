@@ -2,11 +2,17 @@
 
 import { memo } from "react"
 import { TextShimmer } from "../../../components/ui/text-shimmer"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "../../../components/ui/tooltip"
 
 interface AgentToolCallProps {
   icon: React.ComponentType<{ className?: string }>
   title: string
   subtitle?: string
+  tooltipContent?: string
   isPending: boolean
   isError: boolean
   isNested?: boolean
@@ -17,6 +23,7 @@ export const AgentToolCall = memo(
     icon: _Icon,
     title,
     subtitle,
+    tooltipContent,
     isPending,
     isError: _isError,
     isNested,
@@ -24,6 +31,33 @@ export const AgentToolCall = memo(
     // Ensure title and subtitle are strings (copied from canvas)
     const titleStr = String(title)
     const subtitleStr = subtitle ? String(subtitle) : undefined
+
+    // Render subtitle with optional tooltip
+    const subtitleElement = subtitleStr ? (
+      tooltipContent ? (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span
+              className="text-muted-foreground/60 font-normal truncate min-w-0"
+              dangerouslySetInnerHTML={{ __html: subtitleStr }}
+            />
+          </TooltipTrigger>
+          <TooltipContent
+            side="top"
+            className="px-2 py-1.5 max-w-none flex items-center justify-center"
+          >
+            <span className="font-mono text-[10px] text-muted-foreground whitespace-nowrap leading-none">
+              {tooltipContent}
+            </span>
+          </TooltipContent>
+        </Tooltip>
+      ) : (
+        <span
+          className="text-muted-foreground/60 font-normal truncate min-w-0"
+          dangerouslySetInnerHTML={{ __html: subtitleStr }}
+        />
+      )
+    ) : null
 
     return (
       <div
@@ -52,12 +86,7 @@ export const AgentToolCall = memo(
                 titleStr
               )}
             </span>
-            {subtitleStr && (
-              <span
-                className="text-muted-foreground/60 font-normal truncate min-w-0"
-                dangerouslySetInnerHTML={{ __html: subtitleStr }}
-              />
-            )}
+            {subtitleElement}
           </div>
         </div>
       </div>
@@ -68,6 +97,7 @@ export const AgentToolCall = memo(
     return (
       prevProps.title === nextProps.title &&
       prevProps.subtitle === nextProps.subtitle &&
+      prevProps.tooltipContent === nextProps.tooltipContent &&
       prevProps.isPending === nextProps.isPending &&
       prevProps.isError === nextProps.isError &&
       prevProps.isNested === nextProps.isNested

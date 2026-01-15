@@ -133,7 +133,7 @@ export function MobileChatHeader({
         onOpenChange={setIsHistoryOpen}
         items={sortedSubChats}
         onSelect={handleSelectFromHistory}
-        placeholder="Search agents..."
+        placeholder="Search chats..."
         emptyMessage="No results"
         align="start"
         side="bottom"

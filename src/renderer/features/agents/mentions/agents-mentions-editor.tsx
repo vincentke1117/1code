@@ -672,16 +672,13 @@ export const AgentsMentionsEditor = memo(
             const editor = editorRef.current
             if (!editor) return
 
-            const wasAlreadyFocused = document.activeElement === editor
             editor.focus()
 
-            // Only move cursor to end when not already focused
-            if (!wasAlreadyFocused) {
-              const sel = window.getSelection()
-              if (sel) {
-                sel.selectAllChildren(editor)
-                sel.collapseToEnd()
-              }
+            // Always ensure cursor is visible at end
+            const sel = window.getSelection()
+            if (sel && sel.rangeCount === 0) {
+              sel.selectAllChildren(editor)
+              sel.collapseToEnd()
             }
           },
 

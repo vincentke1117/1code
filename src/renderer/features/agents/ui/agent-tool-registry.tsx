@@ -29,6 +29,7 @@ export interface ToolMeta {
   icon: React.ComponentType<{ className?: string }>
   title: (part: any) => string
   subtitle?: (part: any) => string
+  tooltipContent?: (part: any) => string
   variant: ToolVariant
 }
 
@@ -45,6 +46,32 @@ export function getToolStatus(part: any, chatStatus?: string) {
   const isInterrupted = basePending && chatStatus !== "streaming" && chatStatus !== undefined
 
   return { isPending, isError, isSuccess, isInterrupted }
+}
+
+// Utility to get clean display path (remove sandbox prefix)
+function getDisplayPath(filePath: string): string {
+  if (!filePath) return ""
+  const prefixes = [
+    "/project/sandbox/repo/",
+    "/project/sandbox/",
+    "/project/",
+  ]
+  for (const prefix of prefixes) {
+    if (filePath.startsWith(prefix)) {
+      return filePath.slice(prefix.length)
+    }
+  }
+  if (filePath.startsWith("/")) {
+    const parts = filePath.split("/")
+    const rootIndicators = ["apps", "packages", "src", "lib", "components"]
+    const rootIndex = parts.findIndex((p: string) =>
+      rootIndicators.includes(p),
+    )
+    if (rootIndex > 0) {
+      return parts.slice(rootIndex).join("/")
+    }
+  }
+  return filePath
 }
 
 // Utility to calculate diff stats
@@ -148,6 +175,10 @@ export const AgentToolRegistry: Record<string, ToolMeta> = {
       const filePath = part.input?.file_path || ""
       if (!filePath) return "" // Don't show "file" placeholder during streaming
       return filePath.split("/").pop() || ""
+    },
+    tooltipContent: (part) => {
+      const filePath = part.input?.file_path || ""
+      return getDisplayPath(filePath)
     },
     variant: "simple",
   },

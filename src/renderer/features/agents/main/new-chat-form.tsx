@@ -39,6 +39,7 @@ import {
   lastSelectedRepoAtom,
   lastSelectedWorkModeAtom,
   selectedAgentChatIdAtom,
+  selectedDraftIdAtom,
   selectedProjectAtom,
 } from "../atoms"
 import { ProjectSelector } from "../components/project-selector"
@@ -78,6 +79,13 @@ import { agentsSidebarOpenAtom, agentsUnseenChangesAtom } from "../atoms"
 import { AgentSendButton } from "../components/agent-send-button"
 import { CreateBranchDialog } from "../components/create-branch-dialog"
 import { formatTimeAgo } from "../utils/format-time-ago"
+import {
+  loadGlobalDrafts,
+  saveGlobalDrafts,
+  generateDraftId,
+  deleteNewChatDraft,
+  type DraftProject,
+} from "../lib/drafts"
 // import type { PlanType } from "@/lib/config/subscription-plans"
 type PlanType = string
 
@@ -115,7 +123,11 @@ export function NewChatForm({
   const [hasContent, setHasContent] = useState(false)
   const [selectedTeamId] = useAtom(selectedTeamIdAtom)
   const [, setSelectedChatId] = useAtom(selectedAgentChatIdAtom)
+  const [selectedDraftId, setSelectedDraftId] = useAtom(selectedDraftIdAtom)
   const [sidebarOpen, setSidebarOpen] = useAtom(agentsSidebarOpenAtom)
+
+  // Current draft ID being edited (generated when user starts typing in empty form)
+  const currentDraftIdRef = useRef<string | null>(null)
   const unseenChanges = useAtomValue(agentsUnseenChangesAtom)
 
   // Check if any chat has unseen changes
@@ -442,6 +454,50 @@ export function NewChatForm({
     return () => clearTimeout(timeoutId)
   }, [isMobileFullscreen]) // Run on mount and when mobile state changes
 
+  // Track last saved text to avoid unnecessary updates
+  const lastSavedTextRef = useRef<string>("")
+
+  // Track previous draft ID to detect when switching away from a draft
+  const prevSelectedDraftIdRef = useRef<string | null>(null)
+
+  // Restore draft when a specific draft is selected from sidebar
+  // Or clear editor when "New Workspace" is clicked (selectedDraftId becomes null)
+  useEffect(() => {
+    const hadDraftBefore = prevSelectedDraftIdRef.current !== null
+    prevSelectedDraftIdRef.current = selectedDraftId
+
+    if (!selectedDraftId) {
+      // No draft selected - clear editor if we had a draft before (user clicked "New Workspace")
+      currentDraftIdRef.current = null
+      lastSavedTextRef.current = ""
+      if (hadDraftBefore && editorRef.current) {
+        editorRef.current.clear()
+        setHasContent(false)
+      }
+      return
+    }
+
+    const globalDrafts = loadGlobalDrafts()
+    const draft = globalDrafts[selectedDraftId]
+    if (draft?.text) {
+      currentDraftIdRef.current = selectedDraftId
+      lastSavedTextRef.current = draft.text // Initialize to prevent immediate re-save
+
+      // Try to set value immediately if editor is ready
+      if (editorRef.current) {
+        editorRef.current.setValue(draft.text)
+        setHasContent(true)
+      } else {
+        // Fallback: wait for editor to initialize (rare case)
+        const timeoutId = setTimeout(() => {
+          editorRef.current?.setValue(draft.text)
+          setHasContent(true)
+        }, 50)
+        return () => clearTimeout(timeoutId)
+      }
+    }
+  }, [selectedDraftId])
+
   // Filter all repos by search (combined list) and sort by preview status
   const filteredRepos = repos
     .filter(
@@ -469,6 +525,7 @@ export function NewChatForm({
       // Clear editor and images only on success
       editorRef.current?.clear()
       clearImages()
+      clearCurrentDraft()
       utils.chats.list.invalidate()
       setSelectedChatId(data.id)
       // Track this chat and its first subchat as just created for typewriter effect
@@ -600,6 +657,58 @@ export function NewChatForm({
     setShowMentionDropdown(false)
   }, [])
 
+  // Save draft to localStorage when content changes
+  const handleContentChange = useCallback(
+    (hasContent: boolean) => {
+      setHasContent(hasContent)
+      const text = editorRef.current?.getValue() || ""
+
+      // Skip if text hasn't changed
+      if (text === lastSavedTextRef.current) {
+        return
+      }
+      lastSavedTextRef.current = text
+
+      const globalDrafts = loadGlobalDrafts()
+
+      if (text.trim() && validatedProject) {
+        // If no current draft ID, create a new one
+        if (!currentDraftIdRef.current) {
+          currentDraftIdRef.current = generateDraftId()
+        }
+
+        const key = currentDraftIdRef.current
+        globalDrafts[key] = {
+          text,
+          updatedAt: Date.now(),
+          project: {
+            id: validatedProject.id,
+            name: validatedProject.name,
+            path: validatedProject.path,
+            gitOwner: validatedProject.gitOwner,
+            gitRepo: validatedProject.gitRepo,
+            gitProvider: validatedProject.gitProvider,
+          },
+        }
+        saveGlobalDrafts(globalDrafts)
+      } else if (currentDraftIdRef.current) {
+        // Text is empty - delete the current draft
+        deleteNewChatDraft(currentDraftIdRef.current)
+        currentDraftIdRef.current = null
+      }
+    },
+    [validatedProject],
+  )
+
+  // Clear current draft when chat is created
+  const clearCurrentDraft = useCallback(() => {
+    if (!currentDraftIdRef.current) return
+
+    deleteNewChatDraft(currentDraftIdRef.current)
+    currentDraftIdRef.current = null
+    setSelectedDraftId(null)
+  }, [setSelectedDraftId])
+
   // Memoized callbacks to prevent re-renders
   const handleMentionTrigger = useCallback(
     ({ searchText, rect }: { searchText: string; rect: DOMRect }) => {
@@ -726,6 +835,12 @@ export function NewChatForm({
         f.type.startsWith("image/"),
       )
       handleAddAttachments(files)
+      // Focus after state update - use double rAF to wait for React render
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          editorRef.current?.focus()
+        })
+      })
     },
     [handleAddAttachments],
   )
@@ -849,7 +964,7 @@ export function NewChatForm({
                       onCloseTrigger={handleCloseTrigger}
                       onSlashTrigger={handleSlashTrigger}
                       onCloseSlashTrigger={handleCloseSlashTrigger}
-                      onContentChange={setHasContent}
+                      onContentChange={handleContentChange}
                       onSubmit={handleSend}
                       onShiftTab={() => setIsPlanMode((prev) => !prev)}
                       placeholder="Plan, @ for context, / for commands"

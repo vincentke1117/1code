@@ -69,6 +69,7 @@ import {
   GitHubLogo,
   IconSpinner,
   ArchiveIcon,
+  TrashIcon,
   QuestionCircleIcon,
   KeyboardIcon,
   TicketIcon,
@@ -78,6 +79,7 @@ import { Input } from "../../components/ui/input"
 import { Button } from "../../components/ui/button"
 import {
   selectedAgentChatIdAtom,
+  selectedDraftIdAtom,
   loadingSubChatsAtom,
   agentsUnseenChangesAtom,
   archivePopoverOpenAtom,
@@ -88,6 +90,7 @@ import {
 import { AgentsHelpPopover } from "../agents/components/agents-help-popover"
 import { getShortcutKey, isDesktopApp } from "../../lib/utils/platform"
 import { pluralize } from "../agents/utils/pluralize"
+import { useNewChatDrafts, deleteNewChatDraft, type NewChatDraft } from "../agents/lib/drafts"
 import {
   TrafficLightSpacer,
   TrafficLights,
@@ -214,6 +217,7 @@ export function AgentsSidebar({
   onChatSelect,
 }: AgentsSidebarProps) {
   const [selectedChatId, setSelectedChatId] = useAtom(selectedAgentChatIdAtom)
+  const [selectedDraftId, setSelectedDraftId] = useAtom(selectedDraftIdAtom)
   const [loadingSubChats] = useAtom(loadingSubChatsAtom)
   const [isSidebarHovered, setIsSidebarHovered] = useState(false)
   const [isDropdownOpen, setIsDropdownOpen] = useState(false)
@@ -239,6 +243,9 @@ export function AgentsSidebar({
   const [showBottomGradient, setShowBottomGradient] = useState(false)
   const [showTopGradient, setShowTopGradient] = useState(false)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
+
+  // Multiple drafts state - uses event-based sync instead of polling
+  const drafts = useNewChatDrafts()
 
   // Read unseen changes from global atoms
   const unseenChanges = useAtomValue(agentsUnseenChangesAtom)
@@ -571,6 +578,18 @@ export function AgentsSidebar({
     }
   }, [searchQuery, agentChats, pinnedChatIds])
 
+  // Delete a draft from localStorage
+  const handleDeleteDraft = useCallback(
+    (draftId: string) => {
+      deleteNewChatDraft(draftId)
+      // If the deleted draft was selected, clear selection
+      if (selectedDraftId === draftId) {
+        setSelectedDraftId(null)
+      }
+    },
+    [selectedDraftId, setSelectedDraftId],
+  )
+
   // Reset focused index when search query changes
   useEffect(() => {
     setFocusedChatIndex(-1)
@@ -600,6 +619,7 @@ export function AgentsSidebar({
   const handleNewAgent = () => {
     triggerHaptic("light")
     setSelectedChatId(null)
+    setSelectedDraftId(null) // Clear selected draft so form starts empty
     // On mobile, switch to chat mode to show NewChatForm
     if (isMobileFullscreen && onChatSelect) {
       onChatSelect()
@@ -1279,6 +1299,102 @@ export function AgentsSidebar({
             isMultiSelectMode ? "px-0" : "px-2",
           )}
         >
+          {/* Drafts Section - always show if there are drafts */}
+          {drafts.length > 0 && !searchQuery && (
+            <div className={cn("mb-4", isMultiSelectMode ? "px-0" : "-mx-1")}>
+              <div
+                className={cn(
+                  "flex items-center h-4 mb-1",
+                  isMultiSelectMode ? "pl-3" : "pl-2",
+                )}
+              >
+                <h3 className="text-xs font-medium text-muted-foreground whitespace-nowrap">
+                  Drafts
+                </h3>
+              </div>
+              <div className="list-none p-0 m-0">
+                {drafts.map((draft) => {
+                  const isSelected = selectedDraftId === draft.id && !selectedChatId
+                  return (
+                  <div
+                    key={draft.id}
+                    onClick={() => {
+                      // Navigate to NewChatForm with this draft selected
+                      setSelectedChatId(null)
+                      setSelectedDraftId(draft.id)
+                      if (isMobileFullscreen && onChatSelect) {
+                        onChatSelect()
+                      }
+                    }}
+                    className={cn(
+                      "w-full text-left py-1.5 cursor-pointer group relative",
+                      "transition-colors duration-150",
+                      "outline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring/70",
+                      isMultiSelectMode ? "px-3" : "pl-2 pr-2",
+                      !isMultiSelectMode && "rounded-md",
+                      isSelected
+                        ? "bg-foreground/5 text-foreground"
+                        : "text-muted-foreground hover:bg-foreground/5 hover:text-foreground",
+                    )}
+                  >
+                    <div className="flex items-start gap-2.5">
+                      <div className="pt-0.5">
+                        <div className="relative flex-shrink-0 w-4 h-4">
+                          {draft.project?.gitOwner &&
+                          draft.project?.gitProvider === "github" ? (
+                            <img
+                              src={`https://github.com/${draft.project.gitOwner}.png?size=64`}
+                              alt={draft.project.gitOwner}
+                              className="h-4 w-4 rounded-sm flex-shrink-0"
+                            />
+                          ) : (
+                            <GitHubLogo className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex-1 min-w-0 flex flex-col gap-0.5">
+                        <div className="flex items-center gap-1">
+                          <span className="truncate block text-sm leading-tight flex-1">
+                            {draft.text.slice(0, 50)}
+                            {draft.text.length > 50 ? "..." : ""}
+                          </span>
+                          {/* Delete button - shown on hover */}
+                          {!isMultiSelectMode && !isMobileFullscreen && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                handleDeleteDraft(draft.id)
+                              }}
+                              tabIndex={-1}
+                              className="flex-shrink-0 text-muted-foreground hover:text-foreground active:text-foreground transition-[opacity,transform,color] duration-150 ease-out opacity-0 scale-95 pointer-events-none group-hover:opacity-100 group-hover:scale-100 group-hover:pointer-events-auto active:scale-[0.97]"
+                              aria-label="Delete draft"
+                            >
+                              <TrashIcon className="h-3.5 w-3.5" />
+                            </button>
+                          )}
+                        </div>
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-[11px] text-muted-foreground/60 truncate">
+                            <span className="text-blue-500">Draft</span>
+                            {draft.project?.gitRepo
+                              ? ` • ${draft.project.gitRepo}`
+                              : draft.project?.name
+                                ? ` • ${draft.project.name}`
+                                : ""}
+                          </span>
+                          <span className="text-[11px] text-muted-foreground/60 flex-shrink-0">
+                            {formatTime(new Date(draft.updatedAt).toISOString())}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
           {/* Chats Section */}
           {filteredChats.length > 0 ? (
             <div className={cn("mb-4", isMultiSelectMode ? "px-0" : "-mx-1")}>
@@ -1995,7 +2111,7 @@ export function AgentsSidebar({
               <div className="flex-1" />
             </div>
 
-            {/* Premium Support Button */}
+            {/* Feedback Button */}
             <ButtonCustom
               onClick={() =>
                 window.open("https://discord.gg/utff7AdDaV", "_blank")
@@ -2007,7 +2123,7 @@ export function AgentsSidebar({
                 isMobileFullscreen ? "h-10" : "h-7",
               )}
             >
-              <span className="text-sm font-medium">Premium support</span>
+              <span className="text-sm font-medium">Feedback</span>
             </ButtonCustom>
           </motion.div>
         )}

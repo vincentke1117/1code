@@ -68,6 +68,7 @@ import {
   AlertDialogTitle,
 } from "../../components/ui/alert-dialog"
 import { api } from "../../lib/mock-api"
+import { trpcClient } from "../../lib/trpc"
 import { toast } from "sonner"
 import { AgentsRenameSubChatDialog } from "../agents/components/agents-rename-subchat-dialog"
 import { SearchCombobox } from "../../components/ui/search-combobox"
@@ -75,6 +76,7 @@ import { SubChatContextMenu } from "../agents/ui/sub-chat-context-menu"
 import { formatTimeAgo } from "../agents/utils/format-time-ago"
 import { pluralize } from "../agents/utils/pluralize"
 import { useHotkeys } from "react-hotkeys-hook"
+import { useSubChatDraftsCache, getSubChatDraftKey } from "../agents/lib/drafts"
 import { Checkbox } from "../../components/ui/checkbox"
 import { TypewriterText } from "../../components/ui/typewriter-text"
 
@@ -117,7 +119,7 @@ export function AgentsSubChatsSidebar({
   })
   const subChatUnseenChanges = useAtomValue(agentsSubChatUnseenChangesAtom)
   const setSubChatUnseenChanges = useSetAtom(agentsSubChatUnseenChangesAtom)
-  const justCreatedIds = useAtomValue(justCreatedIdsAtom)
+  const [justCreatedIds, setJustCreatedIds] = useAtom(justCreatedIdsAtom)
   const [searchQuery, setSearchQuery] = useState("")
   const [isHistoryOpen, setIsHistoryOpen] = useState(false)
   const [focusedChatIndex, setFocusedChatIndex] = useState<number>(-1)
@@ -401,11 +403,7 @@ export function AgentsSubChatsSidebar({
   }, [])
 
   const renameMutation = api.agents.renameSubChat.useMutation({
-    onSuccess: (_, variables) => {
-      useAgentSubChatStore
-        .getState()
-        .updateSubChatName(variables.subChatId, variables.name)
-    },
+    // Note: store is updated optimistically in handleRenameSave, no need for onSuccess
     onError: (error) => {
       if (error.data?.code === "NOT_FOUND") {
         toast.error("Send a message first before renaming this chat")
@@ -424,40 +422,63 @@ export function AgentsSubChatsSidebar({
     async (newName: string) => {
       if (!renamingSubChat) return
 
+      const subChatId = renamingSubChat.id
       const oldName = renamingSubChat.name
-      useAgentSubChatStore
-        .getState()
-        .updateSubChatName(renamingSubChat.id, newName)
+
+      // Optimistically update store
+      useAgentSubChatStore.getState().updateSubChatName(subChatId, newName)
+
+      // Remove from justCreatedIds to prevent typewriter animation on manual rename
+      setJustCreatedIds((prev) => {
+        if (prev.has(subChatId)) {
+          const next = new Set(prev)
+          next.delete(subChatId)
+          return next
+        }
+        return prev
+      })
 
       setRenameLoading(true)
 
       try {
         await renameMutation.mutateAsync({
-          subChatId: renamingSubChat.id,
+          subChatId,
           name: newName,
         })
       } catch {
+        // Rollback on error
         useAgentSubChatStore
           .getState()
-          .updateSubChatName(renamingSubChat.id, oldName || "New Agent")
+          .updateSubChatName(subChatId, oldName || "New Agent")
       } finally {
         setRenameLoading(false)
         setRenamingSubChat(null)
       }
     },
-    [renamingSubChat, renameMutation],
+    [renamingSubChat, renameMutation, setJustCreatedIds],
   )
 
-  const handleCreateNew = () => {
-    const newId = crypto.randomUUID()
+  const handleCreateNew = async () => {
+    if (!parentChatId) return
+
     const store = useAgentSubChatStore.getState()
-    const now = new Date().toISOString()
+
+    // Create sub-chat in DB first to get the real ID
+    const newSubChat = await trpcClient.chats.createSubChat.mutate({
+      chatId: parentChatId,
+      name: "New Agent",
+      mode: "agent",
+    })
+    const newId = newSubChat.id
+
+    // Track this subchat as just created for typewriter effect
+    setJustCreatedIds((prev) => new Set([...prev, newId]))
 
     // Add to allSubChats with placeholder name
     store.addToAllSubChats({
       id: newId,
       name: "New Agent",
-      created_at: now,
+      created_at: new Date().toISOString(),
       mode: "agent",
     })
 
@@ -714,6 +735,19 @@ export function AgentsSubChatsSidebar({
     clearSubChatSelection()
   }, [parentChatId, clearSubChatSelection])
 
+  // Drafts cache - uses event-based sync instead of polling
+  const draftsCache = useSubChatDraftsCache()
+
+  // Get draft for a sub-chat
+  const getDraftText = useCallback(
+    (subChatId: string): string | null => {
+      if (!parentChatId) return null
+      const key = getSubChatDraftKey(parentChatId, subChatId)
+      return draftsCache[key] || null
+    },
+    [parentChatId, draftsCache],
+  )
+
   // History and Close buttons - reusable element
   const headerButtons = onClose && (
     <div className="flex items-center gap-1">
@@ -722,7 +756,7 @@ export function AgentsSubChatsSidebar({
         onOpenChange={setIsHistoryOpen}
         items={sortedSubChats}
         onSelect={handleSelectFromHistory}
-        placeholder="Search agents..."
+        placeholder="Search chats..."
         emptyMessage="No results"
         getItemValue={(subChat) =>
           `${subChat.name || "New Agent"} ${subChat.id}`
@@ -796,7 +830,7 @@ export function AgentsSubChatsSidebar({
             <IconDoubleChevronLeft className="h-4 w-4" />
           </Button>
         </TooltipTrigger>
-        <TooltipContent side="bottom">Close agents pane</TooltipContent>
+        <TooltipContent side="bottom">Close chats pane</TooltipContent>
       </Tooltip>
     </div>
   )
@@ -864,7 +898,7 @@ export function AgentsSubChatsSidebar({
                       <AlignJustify className="h-4 w-4" />
                     </Button>
                   </TooltipTrigger>
-                  <TooltipContent>Open agents sidebar</TooltipContent>
+                  <TooltipContent>Open chats sidebar</TooltipContent>
                 </Tooltip>
               )}
               <div className="flex-1" />
@@ -882,7 +916,7 @@ export function AgentsSubChatsSidebar({
           <div className="relative">
             <Input
               ref={searchInputRef}
-              placeholder="Search agents..."
+              placeholder="Search chats..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               onKeyDown={(e) => {
@@ -936,11 +970,11 @@ export function AgentsSubChatsSidebar({
                 size="sm"
                 className="h-7 px-2 w-full hover:bg-foreground/10 transition-[background-color,transform] duration-150 ease-out active:scale-[0.97] text-foreground rounded-lg"
               >
-                <span className="text-sm font-medium">New Agent</span>
+                <span className="text-sm font-medium">New Chat</span>
               </Button>
             </TooltipTrigger>
             <TooltipContent side="right">
-              Create a new agent
+              Create a new chat
               <Kbd>{getShortcutKey("newTab")}</Kbd>
             </TooltipContent>
           </Tooltip>
@@ -1010,6 +1044,7 @@ export function AgentsSubChatsSidebar({
                           )
                           const mode = subChat.mode || "agent"
                           const isChecked = selectedSubChatIds.has(subChat.id)
+                          const draftText = getDraftText(subChat.id)
                           const fileChanges = subChatFiles.get(subChat.id) || []
                           const stats =
                             fileChanges.length > 0
@@ -1161,11 +1196,18 @@ export function AgentsSubChatsSidebar({
                                           </button>
                                         )}
                                       </div>
-                                      <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground/60">
-                                        <span className="flex-shrink-0">
-                                          {timeAgo}
-                                        </span>
-                                        {stats && (
+                                      <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground/60 min-w-0">
+                                        {draftText ? (
+                                          <span className="truncate">
+                                            <span className="text-blue-500">Draft:</span>{" "}
+                                            {draftText}
+                                          </span>
+                                        ) : (
+                                          <span className="flex-shrink-0">
+                                            {timeAgo}
+                                          </span>
+                                        )}
+                                        {!draftText && stats && (
                                           <>
                                             <span className="text-muted-foreground/40">
                                               ·
@@ -1250,7 +1292,7 @@ export function AgentsSubChatsSidebar({
                         )}
                       >
                         <h3 className="text-xs font-medium text-muted-foreground whitespace-nowrap">
-                          {pinnedChats.length > 0 ? "Recent" : "Agents"}
+                          {pinnedChats.length > 0 ? "Recent" : "Chats"}
                         </h3>
                       </div>
                       <div className="list-none p-0 m-0">
@@ -1272,6 +1314,7 @@ export function AgentsSubChatsSidebar({
                           )
                           const mode = subChat.mode || "agent"
                           const isChecked = selectedSubChatIds.has(subChat.id)
+                          const draftText = getDraftText(subChat.id)
                           const fileChanges = subChatFiles.get(subChat.id) || []
                           const stats =
                             fileChanges.length > 0
@@ -1423,11 +1466,18 @@ export function AgentsSubChatsSidebar({
                                           </button>
                                         )}
                                       </div>
-                                      <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground/60">
-                                        <span className="flex-shrink-0">
-                                          {timeAgo}
-                                        </span>
-                                        {stats && (
+                                      <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground/60 min-w-0">
+                                        {draftText ? (
+                                          <span className="truncate">
+                                            <span className="text-blue-500">Draft:</span>{" "}
+                                            {draftText}
+                                          </span>
+                                        ) : (
+                                          <span className="flex-shrink-0">
+                                            {timeAgo}
+                                          </span>
+                                        )}
+                                        {!draftText && stats && (
                                           <>
                                             <span className="text-muted-foreground/40">
                                               ·

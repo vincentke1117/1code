@@ -8,11 +8,6 @@ export interface SubChatMeta {
   mode?: "plan" | "agent"
 }
 
-interface DraftContent {
-  text: string
-  updatedAt: number
-}
-
 interface AgentSubChatStore {
   // Current parent chat context
   chatId: string | null
@@ -22,7 +17,6 @@ interface AgentSubChatStore {
   openSubChatIds: string[] // Open tabs (preserves order)
   pinnedSubChatIds: string[] // Pinned sub-chats
   allSubChats: SubChatMeta[] // All sub-chats for history
-  drafts: Record<string, DraftContent> // Input drafts by subChatId
 
   // Actions
   setChatId: (chatId: string | null) => void
@@ -36,18 +30,12 @@ interface AgentSubChatStore {
   updateSubChatName: (subChatId: string, name: string) => void
   updateSubChatMode: (subChatId: string, mode: "plan" | "agent") => void
   updateSubChatTimestamp: (subChatId: string) => void
-  saveDraft: (subChatId: string, text: string) => void
-  getDraft: (subChatId: string) => string | null
-  clearDraft: (subChatId: string) => void
   reset: () => void
 }
 
 // localStorage helpers - store open tabs, active tab, and pinned tabs
 const getStorageKey = (chatId: string, type: "open" | "active" | "pinned") =>
   `agent-${type}-sub-chats-${chatId}`
-
-// Global drafts storage key - stores all drafts across all chats
-const GLOBAL_DRAFTS_KEY = "agent-drafts-global"
 
 const saveToLS = (chatId: string, type: "open" | "active" | "pinned", value: unknown) => {
   if (typeof window === "undefined") return
@@ -64,29 +52,12 @@ const loadFromLS = <T>(chatId: string, type: "open" | "active" | "pinned", fallb
   }
 }
 
-// Drafts are stored globally with composite key "chatId:subChatId"
-const saveGlobalDraftsToLS = (drafts: Record<string, DraftContent>) => {
-  if (typeof window === "undefined") return
-  localStorage.setItem(GLOBAL_DRAFTS_KEY, JSON.stringify(drafts))
-}
-
-const loadGlobalDraftsFromLS = (): Record<string, DraftContent> => {
-  if (typeof window === "undefined") return {}
-  try {
-    const stored = localStorage.getItem(GLOBAL_DRAFTS_KEY)
-    return stored ? JSON.parse(stored) : {}
-  } catch {
-    return {}
-  }
-}
-
 export const useAgentSubChatStore = create<AgentSubChatStore>((set, get) => ({
   chatId: null,
   activeSubChatId: null,
   openSubChatIds: [],
   pinnedSubChatIds: [],
   allSubChats: [],
-  drafts: loadGlobalDraftsFromLS(), // Load all drafts on init
 
   setChatId: (chatId) => {
     if (!chatId) {
@@ -96,14 +67,12 @@ export const useAgentSubChatStore = create<AgentSubChatStore>((set, get) => ({
         openSubChatIds: [],
         pinnedSubChatIds: [],
         allSubChats: [],
-        // Keep drafts - don't reset them on chat change
       })
       return
     }
 
     // Load open/active/pinned IDs from localStorage
     // allSubChats will be populated from DB + placeholders in init effect
-    // Drafts are global and already loaded
     const openSubChatIds = loadFromLS<string[]>(chatId, "open", [])
     const activeSubChatId = loadFromLS<string | null>(chatId, "active", null)
     const pinnedSubChatIds = loadFromLS<string[]>(chatId, "pinned", [])
@@ -205,44 +174,6 @@ export const useAgentSubChatStore = create<AgentSubChatStore>((set, get) => ({
     })
   },
 
-  // Save draft using composite key "chatId:subChatId" for cross-workspace support
-  saveDraft: (subChatId: string, text: string) => {
-    const { chatId, drafts } = get()
-    if (!chatId) {
-      console.log("[DRAFT] saveDraft: no chatId, skipping")
-      return
-    }
-
-    const key = `${chatId}:${subChatId}`
-    console.log("[DRAFT] saveDraft: key=", key, "text=", text.slice(0, 50))
-    const newDrafts = {
-      ...drafts,
-      [key]: { text, updatedAt: Date.now() },
-    }
-    set({ drafts: newDrafts })
-    saveGlobalDraftsToLS(newDrafts)
-  },
-
-  getDraft: (subChatId: string) => {
-    const { chatId, drafts } = get()
-    if (!chatId) return null
-    const key = `${chatId}:${subChatId}`
-    const draft = drafts[key]?.text || null
-    console.log("[DRAFT] getDraft: key=", key, "found=", !!draft)
-    return draft
-  },
-
-  clearDraft: (subChatId: string) => {
-    const { chatId, drafts } = get()
-    if (!chatId) return
-
-    const key = `${chatId}:${subChatId}`
-    console.log("[DRAFT] clearDraft: key=", key)
-    const { [key]: _, ...newDrafts } = drafts
-    set({ drafts: newDrafts })
-    saveGlobalDraftsToLS(newDrafts)
-  },
-
   reset: () => {
     set({
       chatId: null,
@@ -250,7 +181,6 @@ export const useAgentSubChatStore = create<AgentSubChatStore>((set, get) => ({
       openSubChatIds: [],
       pinnedSubChatIds: [],
       allSubChats: [],
-      // Keep drafts on reset - they're global
     })
   },
 }))

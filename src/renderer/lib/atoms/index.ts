@@ -327,6 +327,13 @@ export type UpdateState = {
 
 export const updateStateAtom = atom<UpdateState>({ status: "idle" })
 
+// Track if app was just updated (to show "What's New" banner)
+// This is set to true when app launches with a new version, reset when user dismisses
+export const justUpdatedAtom = atom<boolean>(false)
+
+// Store the version that triggered the "just updated" state
+export const justUpdatedVersionAtom = atom<string | null>(null)
+
 // Legacy atom for backwards compatibility (deprecated)
 export type UpdateInfo = {
   version: string

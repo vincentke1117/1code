@@ -9,6 +9,11 @@ export const selectedAgentChatIdAtom = atomWithStorage<string | null>(
   { getOnInit: true },
 )
 
+// Selected draft ID - when user clicks on a draft in sidebar, this is set
+// NewChatForm uses this to restore the draft text
+// Reset to null when "New Workspace" is clicked or chat is created
+export const selectedDraftIdAtom = atom<string | null>(null)
+
 // Preview paths storage - stores all preview paths keyed by chatId
 const previewPathsStorageAtom = atomWithStorage<Record<string, string>>(
   "agents:previewPaths",
@@ -434,6 +439,7 @@ export const QUESTIONS_SKIPPED_MESSAGE = "User skipped questions - proceed with 
 export const QUESTIONS_TIMED_OUT_MESSAGE = "Timed out"
 
 export type PendingUserQuestions = {
+  subChatId: string
   toolUseId: string
   questions: Array<{
     question: string

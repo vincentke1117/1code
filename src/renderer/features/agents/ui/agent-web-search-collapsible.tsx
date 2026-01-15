@@ -1,7 +1,8 @@
 "use client"
 
 import { memo, useState, useMemo } from "react"
-import { ChevronRight, ExternalLink } from "lucide-react"
+import { ChevronRight } from "lucide-react"
+import { ExternalLinkIcon } from "../../../components/ui/icons"
 import { cn } from "../../../lib/utils"
 
 interface SearchResult {
@@ -103,7 +104,7 @@ export const AgentWebSearchCollapsible = memo(
                   rel="noopener noreferrer"
                   className="flex items-start gap-1.5 px-2 py-1 rounded hover:bg-muted/50 transition-colors group/link"
                 >
-                  <ExternalLink className="w-3 h-3 mt-0.5 flex-shrink-0 text-muted-foreground group-hover/link:text-foreground transition-colors" />
+                  <ExternalLinkIcon className="w-3 h-3 mt-0.5 flex-shrink-0 text-muted-foreground group-hover/link:text-foreground transition-colors" />
                   <div className="min-w-0 flex-1">
                     <div className="text-xs text-foreground truncate">
                       {result.title}

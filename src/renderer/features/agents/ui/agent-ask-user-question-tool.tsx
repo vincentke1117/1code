@@ -1,8 +1,8 @@
 "use client"
 
-import { Check, Clock, X } from "lucide-react"
 import { memo } from "react"
-import { cn } from "../../../lib/utils"
+import { HelpCircle } from "lucide-react"
+import { TextShimmer } from "../../../components/ui/text-shimmer"
 import { QUESTIONS_SKIPPED_MESSAGE, QUESTIONS_TIMED_OUT_MESSAGE } from "../atoms"
 
 interface AgentAskUserQuestionToolProps {
@@ -32,67 +32,97 @@ export const AgentAskUserQuestionTool = memo(function AgentAskUserQuestionTool({
   state,
   isError,
 }: AgentAskUserQuestionToolProps) {
-  const questionCount = input?.questions?.length ?? 0
+  const questions = input?.questions ?? []
+  const questionCount = questions.length
+
+  // For errors, SDK stores errorText separately - use it to detect skip/timeout
+  const effectiveErrorText =
+    errorText || (typeof result === "string" ? result : undefined)
+
+  // Extract answers for display
+  const answers =
+    result && typeof result === "object" && "answers" in result
+      ? result.answers
+      : null
 
   // Determine status
-  // For errors, SDK stores errorText separately - use it to detect skip/timeout
-  const effectiveErrorText = errorText || (typeof result === "string" ? result : undefined)
-
-  let status: "pending" | "completed" | "skipped" | "error" = "pending"
-  let statusText = "Waiting for response..."
-
-  if (state === "result") {
-    // Check for skip/timeout first (SDK marks denied tools as errors)
-    const isSkipped = effectiveErrorText === QUESTIONS_SKIPPED_MESSAGE
-    const isTimedOut = effectiveErrorText === QUESTIONS_TIMED_OUT_MESSAGE
-    if (isSkipped || isTimedOut) {
-      status = "skipped"
-      statusText = isTimedOut ? "Timed out" : "Skipped"
-    } else if (isError) {
-      status = "error"
-      statusText = effectiveErrorText || "Error"
-    } else if (result && typeof result === "object" && "answers" in result) {
-      status = "completed"
-      const answerCount = Object.keys(result.answers || {}).length
-      statusText = `${answerCount} answer${answerCount !== 1 ? "s" : ""} provided`
-    } else {
-      status = "completed"
-      statusText = "Completed"
-    }
-  }
-
-  const StatusIcon = {
-    pending: Clock,
-    completed: Check,
-    skipped: X,
-    error: X,
-  }[status]
-
-  const statusColor = {
-    pending: "text-yellow-500",
-    completed: "text-green-500",
-    skipped: "text-muted-foreground",
-    error: "text-red-500",
-  }[status]
+  const isSkipped = effectiveErrorText === QUESTIONS_SKIPPED_MESSAGE
+  const isTimedOut = effectiveErrorText === QUESTIONS_TIMED_OUT_MESSAGE
+  const isCompleted =
+    state === "result" && answers && !isSkipped && !isTimedOut && !isError
 
   // Show loading state if no questions yet
   if (questionCount === 0 && state === "call") {
     return (
       <div className="flex items-center gap-2 py-1 px-2 text-xs text-muted-foreground">
-        <span>Generating questions...</span>
+        <TextShimmer className="text-xs" duration={1.5}>
+          Generating questions...
+        </TextShimmer>
       </div>
     )
   }
 
+  // Show skipped/timed out state
+  if (state === "result" && (isSkipped || isTimedOut)) {
+    const firstQuestion = questions[0]?.header || questions[0]?.question
+    return (
+      <div className="flex items-center gap-2 py-1 px-2 text-xs text-muted-foreground">
+        <span>{firstQuestion || "Question"}</span>
+        <span className="text-muted-foreground/50">•</span>
+        <span>{isTimedOut ? "Timed out" : "Skipped"}</span>
+      </div>
+    )
+  }
+
+  // Show error state
+  if (state === "result" && isError) {
+    return (
+      <div className="flex items-center gap-2 py-1 px-2 text-xs text-muted-foreground">
+        <span>Question</span>
+        <span className="text-muted-foreground/50">•</span>
+        <span className="text-red-500">{effectiveErrorText || "Error"}</span>
+      </div>
+    )
+  }
+
+  // Show completed state with card layout
+  if (isCompleted && answers) {
+    const entries = Object.entries(answers)
+    if (entries.length === 0) {
+      return (
+        <div className="flex items-center gap-2 py-1 px-2 text-xs text-muted-foreground">
+          <span>Question answered</span>
+        </div>
+      )
+    }
+
+    return (
+      <div className="rounded-lg border border-border bg-muted/30 overflow-hidden mx-2">
+        {/* Header */}
+        <div className="flex items-center gap-1.5 pl-2.5 pr-2 h-7 border-b border-border">
+          <HelpCircle className="w-3.5 h-3.5 text-muted-foreground" />
+          <span className="text-xs text-muted-foreground">Answers</span>
+        </div>
+        {/* Content */}
+        <div className="flex flex-col gap-2 p-2.5 text-xs">
+          {entries.map(([question, answer], idx) => (
+            <div key={idx} className="flex flex-col gap-0.5">
+              <span className="font-medium text-foreground">{question}</span>
+              <span className="text-muted-foreground">{answer}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    )
+  }
+
+  // Show pending state
+  const firstQuestion = questions[0]?.header || questions[0]?.question
   return (
     <div className="flex items-center gap-2 py-1 px-2 text-xs text-muted-foreground">
-      <span className="text-muted-foreground">
-        Asking {questionCount} question{questionCount !== 1 ? "s" : ""}
-      </span>
+      <span>{firstQuestion || "Question"}</span>
       <span className="text-muted-foreground/50">•</span>
-      <div className={cn("flex items-center gap-1")}>
-        <span>{statusText}</span>
-      </div>
+      <span>Waiting for response...</span>
     </div>
   )
 })
